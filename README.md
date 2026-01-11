@@ -1,199 +1,96 @@
-🚦 Rate Limiter
-Why Use a Rate Limiter?
-
-Prevent DoS (Denial of Service) attacks
-
-Reduce costs (especially for paid 3rd-party APIs)
-
-Reduce server load
-
-Basics
-
-Client Side or Server Side?
-→ Server Side
-
-Implemented on Server or Gateway?
-→ Design decision (depends on architecture)
-
-Throttling Based On?
-
-User ID
-
-IP Address
-
-API Key
-
-Other identifiers
-
-Scaling Considerations?
-
-Startup-scale systems
-
-Large companies with massive user bases
-
-Distributed Environment Support?
-→ Yes
-
-Inform Throttled Users? (Exception Handling)
-→ Yes
-
-Algorithms
-
-Common rate-limiting algorithms:
-
-Fixed Window
-
-Sliding Window
-
-Token Bucket
-
-High-Level Design (HLD)
-
-Rate Limiter adds an extra layer on top of the existing system, so it must be extremely fast
-
-Basic model:
-
-User
-
-Counter (tracks requests per user)
-
-Where to Store the Counter?
-
-❌ Database → Too slow
-
-✅ In-Memory Cache → Fast and supports time-based expiry
-
-Example (Redis):
-
-INCR
-
-EXPIRE
-
-Rule Management
-
-Where are rules created and stored?
-
-Cache + Original DB (recommended)
-
-Rules are usually:
-
-Stored in configuration files
-
-Persisted on disk
-
-Handling Rate-Limited Users
-
-Return HTTP 429 (Too Many Requests)
-
-Include useful headers in successful (200 OK) responses:
-
-Requests already used
-
-Requests remaining
-
-Reset time
-
-Handling Rejected Requests
-
-Two approaches:
-
-Drop the request
-
-Push to a Queue
-
-Useful for critical operations like ordering or payments
-
-Distributed Environment Challenges
-Single Server
-
-Easy to implement
-
-Multiple Servers & Concurrent Threads
-
-Additional challenges:
-
-Race Conditions
-
-Synchronization Issues
-
-Race Condition
-
-Occurs when:
-
-Multiple threads access and modify shared resources simultaneously
-
-Synchronization Issues
-
-Example:
-
-A user (e.g., with a shopping cart) hits different servers
-
-No cookies or sticky sessions
-
-Load Balancer does not route user to the same server
-
-Why Cookies & Sticky Sessions Are Often Avoided?
-
+# Rate Limiter
+
+## Why
+- Prevent DoS (Denial of Service) attacks
+- Reduce cost (especially for paid 3rd‑party APIs)
+- Reduce server load
+
+## Basics
+- **Client Side or Server Side?** → Server Side  
+- **Implemented on Server Side or in a Gateway?** → Design decision  
+- **Throttling based on what?** → user id, IP address, …  
+- **Scaling System?** → startup vs. large user base  
+- **Distributed environment?** → Yes  
+- **Inform throttled user?** → Yes  
+
+## Algorithms
+- Fixed window  
+- Sliding window  
+- Token bucket  
+
+## High-Level Design (HLD)
+
+### Performance
+Rate limiter adds an extra layer on top of the existing system, so it must be **fast**.
+
+### System Overview
+We have:
+- **USER**
+- **COUNTER** (tracks per-user usage)
+
+### Counter Storage
+- DB is too slow  
+- Use **in-memory cache** (fast + TTL support)  
+- Example Redis commands:
+  - `INCR`
+  - `EXPIRE`
+
+### Rules
+- Stored in **cache + original DB**
+- Often saved in configuration files on disk
+
+### Handling Rate-Limited Users
+- Return **HTTP 429**
+- For successful requests, include headers:
+  - hits already used
+  - hits remaining
+
+### Handling Rejected Requests
+- Drop the request  
+- Or push to a **queue** for later processing (important for ordering/purchasing flows)
+
+## Distributed Environment
+
+### Challenges
+- **Race conditions**
+- **Synchronization issues**
+
+### Race Condition
+Occurs when multiple threads access/modify shared resources simultaneously.
+
+### Synchronization Issues
+Example:  
+A user hits different servers without cookies or sticky sessions, so the load balancer does not route them consistently.
+
+## Why Cookies & Sticky Sessions Are Avoided
 They:
+- Break scalability  
+- Reduce flexibility  
+- Reduce resilience  
+- Tie users to a specific server  
 
-Break scalability
+Better approach:  
+Use **centralized data stores** (e.g., Redis) for session-like data.
 
-Reduce flexibility
+## Race Condition Solutions
 
-Hurt resilience
+### 1. Locks
+Work but slow down the system.
 
-Sticky sessions:
+### 2. Redis-Based Solutions
+#### Sorted Sets (ZSETs)
+- Good for single commands  
+- Redis is single-threaded → atomic operations
 
-Tie users to specific servers
+#### Lua Scripts
+- Useful when multiple commands must run atomically  
+- Acts like an implicit lock without overhead  
+- Note: Redis < 128GB may require **sharding**
 
-Make scaling, deployments, and traffic rerouting harder
+## Distributed System Summary
+- Multiple rate limiter servers (leader + followers)  
+- Each rate limiter connects to a Redis replica via load balancer  
+- Each rate limiter connects to API servers via load balancer  
 
-Better Solution
-
-Centralized data stores (e.g., Redis)
-
-Store session/state data centrally instead of on individual servers
-
-Race Condition Solutions
-Option 1: Locks
-
-Works but slows down the system
-
-Option 2: Redis-Based Solutions
-1. Sorted Sets (ZSETs)
-
-Redis is single-threaded
-
-Single commands are atomic
-
-2. Lua Scripts
-
-Handle multiple commands atomically
-
-Acts as an implicit lock
-
-No overhead of distributed locks
-
-⚠️ Note: Redis has a memory limit (≈128GB), so sharded Redis may be required.
-
-Distributed System Summary
-
-Multiple Rate Limiter Servers (Leader + Followers)
-
-Each Rate Limiter:
-
-Connects to a Redis replica via Load Balancer
-
-Connects to API Servers via Load Balancer
-
-Monitoring & Observability
-
-Each Rate Limiter pushes metrics to a Monitoring Tool
-
-Useful for:
-
-Traffic analysis
-
-Alerting
-
-Capacity planning
+## Monitoring & Observability
+- Each rate limiter pushes data to the monitoring tool
